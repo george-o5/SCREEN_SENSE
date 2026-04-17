@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 
 export default function App() {
+  const DEMO_RESULTS = {
+    explain: `This is a Google search results page showing the UFC 300 fight card. It lists the main fights that took place on April 14, 2024. You can see the fighters in each match, their records, and the final results, including how the fight ended (like knockout or decision). It helps you quickly understand who fought and who won.`,
+    safe: `This is a legitimate Google search results page. It is completely safe. There are no scams, suspicious links, or harmful content on this screen.`,
+    next: `1. You can tap on any fighter's name to learn more about them. 2. Tap "Preliminary Card" or "Early Prelims" tabs to see more fights. 3. Tap the down arrow at the bottom to see additional results.`
+  }
+
   const [image, setImage] = useState(null)
   const [imageData, setImageData] = useState(null)
   const [cards, setCards] = useState({
@@ -38,6 +44,17 @@ export default function App() {
       next:    { result: '', loading: false, speaking: false }
     })
     window.speechSynthesis.cancel()
+  }
+
+  function handleDemo() {
+    window.speechSynthesis.cancel()
+    setImage('/demo.png')
+    setImageData('demo')
+    setCards({
+      explain: { result: DEMO_RESULTS.explain, loading: false, speaking: false },
+      safe:    { result: DEMO_RESULTS.safe,    loading: false, speaking: false },
+      next:    { result: DEMO_RESULTS.next,    loading: false, speaking: false }
+    })
   }
 
   function speakCard(key) {
@@ -132,6 +149,7 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
 
   useEffect(() => {
     if (!imageData) return
+    if (imageData === 'demo') return
     
     const fetchAll = async () => {
       setCards(prev => ({
@@ -197,6 +215,7 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
 
   async function analyzeCard(key, promptText) {
     if (!imageData) return
+    if (imageData === 'demo') return
     setCards(prev => ({ ...prev, [key]: { ...prev[key], loading: true, result: '' } }))
 
     try {
@@ -333,6 +352,29 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
         📷 Upload Screenshot
       </button>
 
+      <button
+        onClick={handleDemo}
+        style={{
+          width: '100%',
+          background: '#f5f3ff',
+          color: '#5b21b6',
+          fontSize: '17px',
+          fontWeight: '700',
+          border: '2px dashed #c4b5fd',
+          borderRadius: '16px',
+          padding: '16px',
+          cursor: 'pointer',
+          marginTop: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '8px',
+          boxSizing: 'border-box'
+        }}
+      >
+        ✨ Try Demo
+      </button>
+
       <input
         ref={fileInputRef}
         type="file"
@@ -452,23 +494,27 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
                       <div className="result-appear" style={{ borderTop: `1.5px solid ${cardColor}`, paddingTop: '18px' }}>
                         {/* Safety banner for safe card */}
                         {key === 'safe' && (() => {
-                          const resultLower = cards.safe.result.toLowerCase()
-                          const isDanger = resultLower.includes('scam') || resultLower.includes('suspicious') || resultLower.includes('dangerous') || resultLower.includes('unsafe')
-                          if (isDanger) {
-                            return (
-                              <div style={{
-                                background: '#fef2f2',
-                                border: '2px solid #fca5a5',
-                                borderRadius: '14px',
-                                padding: '14px 18px',
-                                marginBottom: '14px'
-                              }}>
-                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#991b1b' }}>
-                                  ⚠️ This may not be safe
-                                </div>
-                              </div>
-                            )
-                          } else {
+                          const safeResult = cards.safe.result.toLowerCase()
+                          const hasSafeSignal = safeResult.includes('is safe') ||
+                            safeResult.includes('looks safe') ||
+                            safeResult.includes('completely safe') ||
+                            safeResult.includes('legitimate') ||
+                            safeResult.includes('no scam') ||
+                            safeResult.includes('no signs of') ||
+                            safeResult.includes('not suspicious') ||
+                            safeResult.includes('nothing suspicious') ||
+                            safeResult.includes('no suspicious')
+                          const hasDangerSignal =
+                            safeResult.includes('warning') ||
+                            safeResult.includes('dangerous') ||
+                            safeResult.includes('unsafe') ||
+                            safeResult.includes('be careful') ||
+                            safeResult.includes('do not') ||
+                            safeResult.includes("don't") ||
+                            safeResult.includes('avoid')
+                          const isSafety = hasSafeSignal && !hasDangerSignal
+                          
+                          if (isSafety) {
                             return (
                               <div style={{
                                 background: '#f0fdf4',
@@ -482,7 +528,22 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
                                 </div>
                               </div>
                             )
+                          } else if (hasDangerSignal) {
+                            return (
+                              <div style={{
+                                background: '#fef2f2',
+                                border: '2px solid #fca5a5',
+                                borderRadius: '14px',
+                                padding: '14px 18px',
+                                marginBottom: '14px'
+                              }}>
+                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#991b1b' }}>
+                                  ⚠️ This may not be safe
+                                </div>
+                              </div>
+                            )
                           }
+                          return null
                         })()}
                         <p style={{ fontSize: largeText ? '23px' : '20px', lineHeight: '1.7', color: '#1a1a2e', fontWeight: '400', margin: '0 0 14px', marginTop: '2px', whiteSpace: 'pre-line' }}>
                           {cards[key].result}
