@@ -41,7 +41,7 @@ export default function App() {
   }
 
   function speakCard(key) {
-    // If this card is already speaking, stop it
+    // If this card is already speaking, STOP and return early
     if (cards[key].speaking) {
       window.speechSynthesis.cancel()
       setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: false } }))
@@ -57,17 +57,53 @@ export default function App() {
       next:    { ...prev.next,    speaking: false }
     }))
     
-    const text = cards[key].result
-    if (!text) return
+    const utterance = new SpeechSynthesisUtterance(cards[key].result)
     
-    const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 0.85
-    utterance.pitch = 1
-    utterance.onend = () => setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: false } }))
-    utterance.onerror = () => setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: false } }))
+    // Pick the best available voice
+    const pickVoice = () => {
+      const voices = window.speechSynthesis.getVoices()
+      
+      // Priority 1: Microsoft Jenny Online (Natural)
+      const jenny = voices.find(v => v.name.includes('Jenny'))
+      if (jenny) return jenny
+      
+      // Priority 2: Microsoft Aria
+      const aria = voices.find(v => v.name.includes('Aria'))
+      if (aria) return aria
+      
+      // Priority 3: Any female English voice
+      const femaleVoice = voices.find(v => 
+        v.lang.startsWith('en') && 
+        (v.name.includes('Female') || v.name.includes('female') || 
+         v.name.includes('Samantha') || v.name.includes('Karen') ||
+         v.name.includes('Google UK English Female'))
+      )
+      if (femaleVoice) return femaleVoice
+      
+      // Fallback: Any English voice
+      return voices.find(v => v.lang.startsWith('en')) || voices[0]
+    }
     
-    setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: true } }))
-    window.speechSynthesis.speak(utterance)
+    const assignVoice = () => {
+      const voice = pickVoice()
+      if (voice) utterance.voice = voice
+      
+      utterance.rate = 0.85
+      utterance.pitch = 1
+      utterance.volume = 1
+      utterance.onend = () => setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: false } }))
+      utterance.onerror = () => setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: false } }))
+      
+      setCards(prev => ({ ...prev, [key]: { ...prev[key], speaking: true } }))
+      window.speechSynthesis.speak(utterance)
+    }
+    
+    // Voices may not be loaded yet on first call
+    if (window.speechSynthesis.getVoices().length === 0) {
+      window.speechSynthesis.onvoiceschanged = assignVoice
+    } else {
+      assignVoice()
+    }
   }
 
   const combinedPrompt = `You are a patient helper for senior citizens who struggle with smartphones.
@@ -106,7 +142,7 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
 
       try {
         const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${import.meta.env.VITE_GEMINI_KEY}`,
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_KEY}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -198,17 +234,30 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
   }
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: '#eef2ff',
-      padding: '0 0 60px',
-      fontFamily: 'system-ui, -apple-system, sans-serif'
-    }}>
+    <>
+      <style>{`
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .result-appear {
+          animation: fadeSlideIn 0.3s ease forwards;
+        }
+        .card-btn:hover { filter: brightness(0.97); }
+        .card-btn:active { transform: scale(0.99); }
+        .upload-btn:active { transform: scale(0.98); }
+      `}</style>
+      <div style={{
+        minHeight: '100vh',
+        background: '#f5f6fa',
+        padding: '0 0 60px',
+        fontFamily: 'system-ui, -apple-system, sans-serif'
+      }}>
 
       {/* Top bar */}
       <div style={{
         width: '100%',
-        background: 'white',
+        background: '#ffffff',
         borderBottom: '2px solid #e0e7ff',
         padding: '16px 20px',
         position: 'sticky',
@@ -217,20 +266,21 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.07)'
       }}>
-        <div style={{ fontSize: '26px', fontWeight: '800', color: '#1a4fd6' }}>
+        <div style={{ fontSize: '28px', fontWeight: '900', color: '#2d3a8c', letterSpacing: '-0.5px' }}>
           ScreenSense
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
           <button
             onClick={() => setLargeText(false)}
             style={{
-              fontSize: '15px',
+              fontSize: '14px',
               fontWeight: '700',
               padding: '6px 14px',
-              background: largeText ? '#e0e7ff' : '#1a4fd6',
-              color: largeText ? '#1a4fd6' : 'white',
+              background: largeText ? '#eef2ff' : '#2d3a8c',
+              color: largeText ? '#2d3a8c' : 'white',
               border: 'none',
               borderRadius: '20px',
               cursor: 'pointer'
@@ -241,11 +291,11 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
           <button
             onClick={() => setLargeText(true)}
             style={{
-              fontSize: '15px',
+              fontSize: '14px',
               fontWeight: '700',
               padding: '6px 14px',
-              background: largeText ? '#1a4fd6' : '#e0e7ff',
-              color: largeText ? 'white' : '#1a4fd6',
+              background: largeText ? '#2d3a8c' : '#eef2ff',
+              color: largeText ? 'white' : '#2d3a8c',
               border: 'none',
               borderRadius: '20px',
               cursor: 'pointer'
@@ -261,21 +311,23 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
 
       <button
         onClick={() => fileInputRef.current.click()}
+        className="upload-btn"
         style={{
           width: '100%',
-          background: '#1a4fd6',
-          borderLeft: '5px solid #3b82f6',
+          background: 'linear-gradient(135deg, #2d3a8c 0%, #4f63d2 100%)',
           color: 'white',
-          fontSize: '20px',
+          fontSize: '21px',
           fontWeight: '800',
-          borderRadius: '16px',
-          padding: '20px 24px',
+          borderRadius: '18px',
+          padding: '22px 28px',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           gap: '12px',
           border: 'none',
-          boxSizing: 'border-box'
+          boxSizing: 'border-box',
+          boxShadow: '0 4px 18px rgba(45,58,140,0.25)',
+          transition: 'transform 0.1s, box-shadow 0.1s'
         }}
       >
         📷 Upload Screenshot
@@ -292,16 +344,16 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
       {!image && (
         <div style={{ textAlign: 'center', paddingTop: '32px' }}>
           <div style={{ fontSize: '48px', letterSpacing: '8px', marginBottom: '16px' }}>📱 ➡️ 💬</div>
-          <h2 style={{ fontSize: '26px', fontWeight: '800', color: '#1a4fd6', margin: '16px 0 10px', lineHeight: '1.3' }}>
+          <h2 style={{ fontSize: '27px', fontWeight: '900', color: '#2d3a8c', margin: '16px 0 10px', lineHeight: '1.3' }}>
             Confused by something on your phone?
           </h2>
-          <p style={{ fontSize: '18px', color: '#6b7280', lineHeight: '1.6', maxWidth: '360px', margin: '0 auto' }}>
+          <p style={{ fontSize: '17px', color: '#6b7280', lineHeight: '1.6', maxWidth: '360px', margin: '0 auto', marginTop: '6px' }}>
             Upload your screen and we'll explain it in plain simple words.
           </p>
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap', marginTop: '20px' }}>
-            <span style={{ fontSize: '15px', padding: '8px 16px', borderRadius: '20px', fontWeight: '700', background: '#dbeafe', color: '#1e40af' }}>🔍 Explain it</span>
-            <span style={{ fontSize: '15px', padding: '8px 16px', borderRadius: '20px', fontWeight: '700', background: '#dcfce7', color: '#166534' }}>🛡️ Check safety</span>
-            <span style={{ fontSize: '15px', padding: '8px 16px', borderRadius: '20px', fontWeight: '700', background: '#ede9fe', color: '#5b21b6' }}>👉 What to do next</span>
+            <span style={{ fontSize: '15px', padding: '8px 16px', borderRadius: '20px', fontWeight: '700', background: '#f0f4ff', color: '#1e40af' }}>🔍 Explain it</span>
+            <span style={{ fontSize: '15px', padding: '8px 16px', borderRadius: '20px', fontWeight: '700', background: '#f0fdf4', color: '#166534' }}>🛡️ Check safety</span>
+            <span style={{ fontSize: '15px', padding: '8px 16px', borderRadius: '20px', fontWeight: '700', background: '#f5f3ff', color: '#5b21b6' }}>👉 What to do next</span>
           </div>
         </div>
       )}
@@ -309,10 +361,10 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
       {image && (
         <>
           <div style={{
-            borderRadius: '16px',
+            borderRadius: '20px',
             overflow: 'hidden',
-            border: '3px solid #c7d7fc',
-            boxShadow: '0 4px 20px rgba(99,102,241,0.12)',
+            border: '2px solid #e0e4f4',
+            boxShadow: '0 4px 24px rgba(45,58,140,0.10)',
             margin: '0 0 4px'
           }}>
             <img src={image} style={{ width: '100%', display: 'block' }} />
@@ -321,10 +373,16 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
             <button
               onClick={() => fileInputRef.current.click()}
               style={{
-                flex: 1, background: '#1a4fd6', color: 'white',
-                fontSize: '16px', fontWeight: '700',
-                border: 'none', borderRadius: '14px',
-                padding: '14px', cursor: 'pointer'
+                flex: 1,
+                background: 'linear-gradient(135deg, #2d3a8c 0%, #4f63d2 100%)',
+                color: 'white',
+                fontSize: '16px',
+                fontWeight: '700',
+                border: 'none',
+                borderRadius: '14px',
+                padding: '14px',
+                cursor: 'pointer',
+                boxShadow: '0 2px 10px rgba(45,58,140,0.18)'
               }}
             >
               📷 Upload New
@@ -332,10 +390,15 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
             <button
               onClick={reset}
               style={{
-                flex: 1, background: '#f3f4f6', color: '#374151',
-                fontSize: '16px', fontWeight: '700',
-                border: '2px solid #e5e7eb', borderRadius: '14px',
-                padding: '14px', cursor: 'pointer'
+                flex: 1,
+                background: '#f3f4f6',
+                color: '#374151',
+                fontSize: '16px',
+                fontWeight: '700',
+                border: '2px solid #e5e7eb',
+                borderRadius: '14px',
+                padding: '14px',
+                cursor: 'pointer'
               }}
             >
               ↩ Start Over
@@ -346,9 +409,9 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
 
       {imageData && (() => {
         const cardConfigs = [
-          { key: 'explain', emoji: '🔍', title: 'Explain this screen', subtitle: 'What am I looking at?', cardBg: '#dbeafe', cardColor: '#93c5fd', cardTextColor: '#1e40af', cardSubColor: '#3b82f6' },
-          { key: 'safe',    emoji: '🛡️', title: 'Is this safe?',        subtitle: 'Check for scams or dangers', cardBg: '#dcfce7', cardColor: '#86efac', cardTextColor: '#166534', cardSubColor: '#16a34a' },
-          { key: 'next',    emoji: '👉', title: 'What should I do next?', subtitle: 'Step-by-step guide',        cardBg: '#ede9fe', cardColor: '#c4b5fd', cardTextColor: '#5b21b6', cardSubColor: '#7c3aed' },
+          { key: 'explain', emoji: '🔍', title: 'Explain this screen', subtitle: 'What am I looking at?', cardBg: '#f0f4ff', cardColor: '#a5b4fc', cardTextColor: '#1e40af', cardSubColor: '#3b82f6' },
+          { key: 'safe',    emoji: '🛡️', title: 'Is this safe?',        subtitle: 'Check for scams or dangers', cardBg: '#f0fdf4', cardColor: '#6ee7b7', cardTextColor: '#166534', cardSubColor: '#16a34a' },
+          { key: 'next',    emoji: '👉', title: 'What should I do next?', subtitle: 'Step-by-step guide',        cardBg: '#f5f3ff', cardColor: '#c4b5fd', cardTextColor: '#5b21b6', cardSubColor: '#7c3aed' },
         ]
         const anyCardLoading = cards.explain.loading || cards.safe.loading || cards.next.loading
         
@@ -359,22 +422,25 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
               return (
                 <div key={key} style={{
                   background: 'white',
-                  borderRadius: '20px',
+                  borderRadius: '24px',
                   border: `2px solid ${cardColor}`,
                   overflow: 'hidden',
                   opacity: (anyCardLoading && !thisCardLoading) ? 0.45 : 1,
-                  transition: 'opacity 0.2s'
+                  transition: 'opacity 0.2s, box-shadow 0.2s',
+                  boxShadow: '0 2px 16px rgba(45,58,140,0.08)'
                 }}>
                   {/* Card Header — static display only */}
-                  <div style={{
+                  <div className="card-btn" style={{
                     width: '100%', background: cardBg, border: 'none',
                     padding: '18px 20px', display: 'flex', alignItems: 'center',
-                    gap: '14px'
+                    gap: '14px',
+                    borderRadius: cards[key].result ? '22px 22px 0 0' : '22px',
+                    transition: 'background 0.15s'
                   }}>
                     <span style={{ fontSize: '28px' }}>{emoji}</span>
                     <span style={{ display: 'flex', flexDirection: 'column', textAlign: 'left' }}>
-                      <span style={{ fontSize: '20px', fontWeight: '700', color: cardTextColor }}>{title}</span>
-                      <span style={{ fontSize: '13px', color: cardSubColor, marginTop: '2px' }}>{subtitle}</span>
+                      <span style={{ fontSize: '21px', fontWeight: '800', color: cardTextColor, letterSpacing: '-0.2px' }}>{title}</span>
+                      <span style={{ fontSize: '14px', fontWeight: '500', color: cardSubColor, marginTop: '2px' }}>{subtitle}</span>
                     </span>
                     {thisCardLoading && <span style={{ marginLeft: 'auto', fontSize: '20px' }}>⏳</span>}
                     {cards[key].result && !thisCardLoading && <span style={{ marginLeft: 'auto', fontSize: '16px', color: cardTextColor }}>✓</span>}
@@ -383,7 +449,7 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
                   {/* Result area — only visible when result exists */}
                   {cards[key].result && !cards[key].loading && (
                     <div style={{ padding: '0 20px 20px' }}>
-                      <div style={{ borderTop: `1.5px solid ${cardColor}`, paddingTop: '16px' }}>
+                      <div className="result-appear" style={{ borderTop: `1.5px solid ${cardColor}`, paddingTop: '18px' }}>
                         {/* Safety banner for safe card */}
                         {key === 'safe' && (() => {
                           const resultLower = cards.safe.result.toLowerCase()
@@ -393,11 +459,11 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
                               <div style={{
                                 background: '#fef2f2',
                                 border: '2px solid #fca5a5',
-                                borderRadius: '12px',
-                                padding: '12px 16px',
-                                marginBottom: '12px'
+                                borderRadius: '14px',
+                                padding: '14px 18px',
+                                marginBottom: '14px'
                               }}>
-                                <div style={{ fontSize: '17px', fontWeight: '800', color: '#991b1b' }}>
+                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#991b1b' }}>
                                   ⚠️ This may not be safe
                                 </div>
                               </div>
@@ -406,30 +472,35 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
                             return (
                               <div style={{
                                 background: '#f0fdf4',
-                                border: '2px solid #86efac',
-                                borderRadius: '12px',
-                                padding: '12px 16px',
-                                marginBottom: '12px'
+                                border: '2px solid #6ee7b7',
+                                borderRadius: '14px',
+                                padding: '14px 18px',
+                                marginBottom: '14px'
                               }}>
-                                <div style={{ fontSize: '17px', fontWeight: '800', color: '#166534' }}>
+                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#065f46' }}>
                                   ✅ This looks safe
                                 </div>
                               </div>
                             )
                           }
                         })()}
-                        <p style={{ fontSize: largeText ? '22px' : '19px', lineHeight: '1.65', color: '#111827', margin: '0 0 14px', whiteSpace: 'pre-line' }}>
+                        <p style={{ fontSize: largeText ? '23px' : '20px', lineHeight: '1.7', color: '#1a1a2e', fontWeight: '400', margin: '0 0 14px', marginTop: '2px', whiteSpace: 'pre-line' }}>
                           {cards[key].result}
                         </p>
                         {/* Read Aloud toggle */}
                         <button
                           onClick={() => speakCard(key)}
                           style={{
-                            width: '100%', padding: '14px',
-                            background: cards[key].speaking ? '#fee2e2' : '#fef9c3',
-                            color: cards[key].speaking ? '#991b1b' : '#854d0e',
-                            border: 'none', borderRadius: '12px',
-                            fontSize: '17px', fontWeight: '700', cursor: 'pointer'
+                            width: '100%',
+                            padding: '14px',
+                            background: cards[key].speaking ? '#fef2f2' : '#fffbeb',
+                            color: cards[key].speaking ? '#991b1b' : '#92400e',
+                            border: cards[key].speaking ? '1.5px solid #fca5a5' : '1.5px solid #fde68a',
+                            borderRadius: '14px',
+                            fontSize: '17px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
                           }}
                         >
                           {cards[key].speaking ? '⏹ Stop Reading' : '🔊 Read Aloud'}
@@ -444,6 +515,7 @@ Give 2-3 simple numbered steps. Use plain language a grandparent would understan
         )
       })()}
       </div>
-    </div>
+      </div>
+    </>
   )
 }
